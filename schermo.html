@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="it"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Presenze – schermo QR</title>
+</head><body>
+<style>body{font-family:system-ui,sans-serif;background:#f1f5f9;margin:0;padding:20px;color:#0f172a}.card{background:#fff;max-width:440px;margin:24px auto;padding:24px;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.08);text-align:center}input,button{width:100%;padding:13px;margin-top:12px;border-radius:9px;border:1px solid #cbd5e1;font-size:16px;box-sizing:border-box}button{background:#1d4ed8;color:#fff;border:none;font-weight:600}button:disabled{opacity:.5}.err{color:#b91c1c}.ok{color:#15803d;font-weight:600}.piccolo{font-size:13px;color:#64748b}</style><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script><div class="card" style="max-width:520px">  <h2 style="margin-top:0">Inquadra per registrare la presenza</h2>  <p class="piccolo">Riunione: <b id="etich"></b></p>  <div id="qr" style="display:flex;justify-content:center;margin:18px 0"></div>  <p id="avviso" class="err" style="display:none;font-size:20px;font-weight:600"></p>  <p>Dopo la scansione hai <b><span id="tempoCompilazione">40</span> secondi</b> per scrivere cognome, nome e matricola.</p>  <p id="stato" class="piccolo">Caricamento…</p>
+  <p class="piccolo"><a href="pannello.html">Torna al pannello</a></p></div>
+<script>
+
+function leggiCfg() { try { var s = localStorage.getItem("asmed_cfg") || sessionStorage.getItem("asmed_cfg"); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+function salvaCfg(c) { try { var t = JSON.stringify(c); if (c.ricorda) { localStorage.setItem("asmed_cfg", t); sessionStorage.removeItem("asmed_cfg"); } else { sessionStorage.setItem("asmed_cfg", t); localStorage.removeItem("asmed_cfg"); } } catch (e) {} }
+function dimentica() { try { localStorage.removeItem("asmed_cfg"); sessionStorage.removeItem("asmed_cfg"); } catch (e) {} }
+function apiValido(u) { return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,200}\/exec$/.test(u); }
+function chiaveValida(k) { return /^[A-Za-z0-9]{16,64}$/.test(k); }
+function credenziale(c) { return c.key + (c.sessione ? "|" + c.sessione : ""); }
+function idDistribuzione(api) { var m = /\/macros\/s\/([^\/]+)\/exec$/.exec(api || ""); return m ? m[1] : ""; }
+function cartellaCorrente() { return location.href.split("?")[0].split("#")[0].replace(/[^\/]*$/, ""); }
+
+// chiamata alle funzioni dell'app (POST text/plain: nessun preflight, nessun cookie)
+function chiediAdm(api, fn, args) {
+  var ctrl = ("AbortController" in window) ? new AbortController() : null;
+  var to = setTimeout(function () { if (ctrl) ctrl.abort(); }, 40000);
+  var opz = { method: "POST", credentials: "omit", body: JSON.stringify({ api: "adm", fn: fn, args: args }) };
+  if (ctrl) opz.signal = ctrl.signal;
+  return fetch(api, opz).then(function (r) { clearTimeout(to); return r.json(); }, function (e) { clearTimeout(to); throw new Error("Connessione non riuscita."); })
+    .then(function (r) { if (!r.ok) throw new Error(r.err || "Errore"); return r.r; });
+}
+
+// stessa interfaccia di google.script.run, ma via fetch (usata dal codice del pannello e dello schermo)
+var ASMED_RUN = {
+  withSuccessHandler: function (ok) {
+    return { withFailureHandler: function (ko) {
+      return new Proxy({}, { get: function (_, fn) { return function () {
+        var args = Array.prototype.slice.call(arguments), c = leggiCfg();
+        if (!c || !apiValido(c.api)) { ko({ message: "Non autorizzato: apri il pannello e accedi." }); return; }
+        chiediAdm(c.api, fn, args).then(function (x) { ok(x); }, function (e) {
+          if (/^Non autorizzato/.test(e.message)) { c.sessione = ""; c.scade = 0; salvaCfg(c); }
+          ko({ message: e.message });
+        });
+      }; } });
+    } };
+  }
+};
+
+  var SESS = new URLSearchParams(location.search).get("sessione") || "", qr = null;
+document.getElementById("etich").textContent = SESS.replace(/_/g, " ");
+function credenzialeCorrente() { var c = leggiCfg(); return c ? credenziale(c) : ""; }
+function urlQr(u) { var c = leggiCfg(), d = c ? idDistribuzione(c.api) : ""; return u + "&d=" + encodeURIComponent(d); }  function aggiorna() {    ASMED_RUN      .withSuccessHandler(function (r) {        var box = document.getElementById("qr"), av = document.getElementById("avviso");        if (r.stato !== "Attiva") {          box.innerHTML = ""; box.style.display = "none"; qr = null;          av.textContent = r.stato === "In pausa" ? "Registrazioni sospese. Riprendono quando vengono riattivate dal pannello." :                           r.stato === "Chiusa" ? "Riunione chiusa: le registrazioni sono terminate." : "Riunione non trovata.";          av.style.display = "block";          document.getElementById("stato").textContent = "";          if (r.stato !== "Chiusa") setTimeout(aggiorna, r.msAllaProssima);          return;        }        av.style.display = "none"; box.style.display = "flex";        if (!qr) { qr = new QRCode(box, { text: urlQr(r.url), width: 480, height: 480, correctLevel: QRCode.CorrectLevel.M }); }        else { qr.clear(); qr.makeCode(urlQr(r.url)); }        document.getElementById("stato").textContent = "Aggiornato alle " + new Date().toLocaleTimeString("it-IT") + " · il codice cambia ogni " + (r.finestra || 10) + " s";        var tc = document.getElementById("tempoCompilazione"); if (tc && r.tempo) tc.textContent = r.tempo;        setTimeout(aggiorna, r.msAllaProssima + 300);      })      .withFailureHandler(function (err) {        document.getElementById("stato").textContent = "Errore: " + (/^Non autorizzato/.test(err.message) ? "sessione scaduta: apri il pannello e accedi di nuovo" : err.message) + " – nuovo tentativo…";        setTimeout(aggiorna, 3000);      })      .getQrToken(credenzialeCorrente(), SESS);  }  aggiorna();
+</script></body></html>

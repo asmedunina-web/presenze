@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="it"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Registra presenza</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#f1f5f9;margin:0;padding:20px;color:#0f172a}
+.card{background:#fff;max-width:440px;margin:24px auto;padding:24px;border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.08);text-align:center}
+input,button{width:100%;padding:13px;margin-top:12px;border-radius:9px;border:1px solid #cbd5e1;font-size:16px;box-sizing:border-box}
+button{background:#1d4ed8;color:#fff;border:none;font-weight:600}button:disabled{opacity:.5}
+.err{color:#b91c1c}.ok{color:#15803d;font-weight:600}.piccolo{font-size:13px;color:#64748b}
+</style></head><body>
+<div class="card">
+  <h3 style="margin-top:0">Registra presenza</h3>
+  <p class="piccolo" id="rif"></p>
+  <p id="stato">Verifica del codice…</p>
+  <div id="modulo" style="display:none">
+    <input id="cognome" placeholder="Cognome" autocomplete="family-name" autocapitalize="words">
+    <input id="nome" placeholder="Nome" autocomplete="given-name" autocapitalize="words">
+    <input id="matricola" placeholder="Matricola" autocomplete="off" autocapitalize="characters">
+    <button id="b">Invia presenza</button>
+    <p id="timer" class="piccolo"></p>
+    <p id="inf" class="piccolo"></p>
+  </div>
+  <p id="esito"></p>
+</div>
+<script>
+var q = new URLSearchParams(location.search);
+var S = q.get("s") || "", T = q.get("t") || "", D = q.get("d") || "";
+var API = /^[A-Za-z0-9_-]{20,200}$/.test(D) ? "https://script.google.com/macros/s/" + D + "/exec" : "";
+try { history.replaceState(null, "", location.pathname); } catch (e) {}
+var ticket = "", restanti = 0, iv = null;
+
+function $(id) { return document.getElementById(id); }
+function messaggio(testo, cls) { var e = $("esito"); e.textContent = testo; e.className = cls || ""; }
+function chiedi(url, opz) {
+  var ctrl = ("AbortController" in window) ? new AbortController() : null;
+  var to = setTimeout(function () { if (ctrl) ctrl.abort(); }, 25000);
+  opz = opz || {}; opz.credentials = "omit";
+  if (ctrl) opz.signal = ctrl.signal;
+  return fetch(url, opz).then(function (r) { clearTimeout(to); return r.json(); },
+                              function (err) { clearTimeout(to); throw err; });
+}
+function dev() {
+  try {
+    var d = localStorage.getItem("dev");
+    if (!d) { d = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6); localStorage.setItem("dev", d); }
+    return d;
+  } catch (e) { return ""; }
+}
+function mostraTimer() { $("timer").textContent = "Tempo rimasto: " + restanti + " s"; }
+function scaduto() {
+  clearInterval(iv); $("b").disabled = true;
+  messaggio("Tempo scaduto: inquadra di nuovo il QR in aula.", "err");
+}
+
+if (!S || !T || !API) {
+  $("stato").textContent = "Per registrare la presenza inquadra il QR mostrato in aula.";
+} else {
+  chiedi(API + "?api=ticket&s=" + encodeURIComponent(S) + "&t=" + encodeURIComponent(T))
+    .then(function (d) {
+      if (!d.ok) { $("stato").textContent = ""; messaggio(d.msg || "Codice non valido.", "err"); return; }
+      ticket = d.token; restanti = d.secondi;
+      $("rif").textContent = "Riunione: " + d.riunione;
+      $("inf").textContent = d.informativa || "";
+      $("stato").style.display = "none"; $("modulo").style.display = "block";
+      mostraTimer();
+      iv = setInterval(function () { restanti--; mostraTimer(); if (restanti <= 0) scaduto(); }, 1000);
+    })
+    .catch(function () {
+      $("stato").textContent = "";
+      messaggio("Connessione non riuscita. Controlla la rete e inquadra di nuovo il QR.", "err");
+    });
+}
+
+$("b").onclick = function () {
+  var c = $("cognome").value.trim(), n = $("nome").value.trim(), m = $("matricola").value.trim();
+  if (!c || !n || !m) { alert("Compila cognome, nome e matricola."); return; }
+  var b = this; b.disabled = true; messaggio("Invio in corso…", "piccolo");
+  chiedi(API, { method: "POST", body: JSON.stringify({ api: "registra", st: ticket, cognome: c, nome: n, matricola: m, disp: dev() }) })
+    .then(function (r) {
+      messaggio(r.msg || "Risposta non valida.", r.ok ? "ok" : "err");
+      if (r.ok) { clearInterval(iv); $("modulo").style.display = "none"; }
+      else if (r.scaduto) { clearInterval(iv); }
+      else { b.disabled = false; }
+    })
+    .catch(function () {
+      messaggio("Connessione non riuscita. Riprova: se compare «già registrata», la presenza è stata salvata.", "err");
+      b.disabled = false;
+    });
+};
+</script></body></html>
