@@ -7,30 +7,44 @@
 <title>Presenze – pannello</title>
 <style>
 .gate{max-width:440px;margin:40px auto;background:#fff;border-radius:14px;padding:24px;box-shadow:0 4px 18px rgba(0,0,0,.08);font-family:system-ui,sans-serif;color:#0f172a}
-.gate input[type=text]{width:100%;padding:12px;margin:6px 0 10px;border:1px solid #cbd5e1;border-radius:9px;font-size:15px;box-sizing:border-box}
+.gate input[type=text],.gate input[type=password]{width:100%;padding:12px;margin:6px 0 10px;border:1px solid #cbd5e1;border-radius:9px;font-size:15px;box-sizing:border-box}
 .gate button{padding:11px 16px;border:none;border-radius:9px;background:#1d4ed8;color:#fff;font-weight:600;font-size:15px;cursor:pointer}
 .gate .p{font-size:13px;color:#64748b}.gate .e{color:#b91c1c;font-weight:600;font-size:14px}
 body{background:#f1f5f9}</style>
+<script src="config.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head><body>
 <div class="gate" id="gate" style="display:none">
   <h2 style="margin-top:0">Presenze ASMed – pannello</h2>
   <div id="gateApp" style="display:none">
-    <p class="p">Primo accesso su questo browser. Incolla i due dati che hai in Apps Script.</p>
-    <label class="p">Indirizzo dell'app (finisce con /exec; lo trovi in <i>Esegui il deployment → Gestisci deployment</i>)</label>
+    <p class="p">Primo accesso su questo browser. Incolla l'indirizzo dell'app (finisce con /exec; lo trovi in <i>Esegui il deployment → Gestisci deployment</i>).</p>
     <input type="text" id="inApi" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">
-    <label class="p">Chiave admin</label>
-    <input type="text" id="inKey" autocomplete="off" placeholder="la chiave stampata da setup()">
-    <label class="p"><input type="checkbox" id="inRicorda" checked> Ricorda su questo dispositivo</label>
     <p id="msgApp" class="e"></p>
-    <button id="vai">Continua</button>
+    <button id="vai" type="button">Continua</button>
   </div>
-  <div id="gateGoogle" style="display:none">
-    <p>Accedi con l'<b>account proprietario</b> dello script. Se hai più account, Google ti fa scegliere quale usare.</p>
-    <div id="gsi" style="min-height:44px"></div>
-    <p id="msgGoogle" class="e"></p>
-    <p class="p"><a href="#" id="cambiaApp">Cambia indirizzo o chiave</a></p>
+  <form id="gateLogin" style="display:none">
+    <p style="margin-top:0">Accedi al pannello.</p>
+    <label class="p" for="inEmail">Email</label>
+    <input type="text" id="inEmail" name="username" autocomplete="username" placeholder="email dell'account proprietario">
+    <label class="p" for="inPw">Password</label>
+    <input type="password" id="inPw" name="password" autocomplete="current-password">
+    <div id="googleBox" style="display:none">
+      <p class="p">Controllo doppio: scegli anche l'account Google con la stessa email.</p>
+      <div id="gsi" style="min-height:44px"></div>
+      <p id="gOk" class="p"></p>
+    </div>
+    <label class="p"><input type="checkbox" id="inRicorda" checked> Resta collegato su questo dispositivo (alcune ore)</label>
+    <p id="msgLogin" class="e"></p>
+    <button type="submit">Accedi</button>
+  </form>
+  <div id="gateChiave" style="display:none">
+    <p class="p">Accesso con la chiave admin (la password non è ancora impostata nel codice).</p>
+    <input type="text" id="inKey" autocomplete="off" placeholder="chiave admin stampata da setup()">
+    <label class="p"><input type="checkbox" id="inRicordaK" checked> Ricorda su questo dispositivo</label>
+    <p id="msgKey" class="e"></p>
+    <button id="vaiK" type="button">Entra</button>
   </div>
+  <p class="p" id="cambiaBox"><a href="#" id="cambiaApp">Cambia indirizzo dell'app</a></p>
 </div>
 <div id="app" style="display:none">
 
@@ -43,7 +57,7 @@ body{background:#f1f5f9}</style>
   .box{background:#fff;border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 2px 12px rgba(0,0,0,.07)}
   .tabs{display:flex;gap:6px;margin:14px 0;flex-wrap:wrap}
   .tab{background:#e2e8f0;color:#334155;padding:10px 16px}.tab.on{background:#1d4ed8;color:#fff}
-  input[type=text],input[type=date],select{padding:11px;border:1px solid #cbd5e1;border-radius:9px;font-size:15px;min-width:0;background:#fff}
+  input[type=text],input[type=date],input[type=number],select{padding:11px;border:1px solid #cbd5e1;border-radius:9px;font-size:15px;min-width:0;background:#fff}
   .form{display:flex;gap:8px;flex-wrap:wrap}
   .form input[type=text]{flex:2 1 200px}.form input[type=date]{flex:1 1 150px}
   button,.btn{display:inline-block;padding:9px 14px;border:none;border-radius:9px;background:#1d4ed8;color:#fff;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none}
@@ -81,8 +95,15 @@ body{background:#f1f5f9}</style>
     <div class="form">
       <input type="text" id="nome" placeholder="Nome (es. Riunione Direttivo)" autocomplete="off">
       <input type="date" id="data">
+    </div>
+    <div class="form" style="margin-top:10px;align-items:flex-end">
+      <label class="piccolo" style="flex:1 1 190px">Il QR cambia ogni (secondi)<br>
+        <input type="number" id="nQr" min="5" max="120" value="10" style="width:100%"></label>
+      <label class="piccolo" style="flex:1 1 190px">Tempo per compilare dopo la scansione (secondi)<br>
+        <input type="number" id="nTempo" min="15" max="600" value="40" style="width:100%"></label>
       <button id="crea">Crea riunione</button>
     </div>
+    <p class="piccolo">Potrai cambiare entrambi i valori in qualsiasi momento da «Gestisci riunioni».</p>
     <p class="piccolo" id="msgCrea"></p>
   </div></div>
 
@@ -102,7 +123,8 @@ body{background:#f1f5f9}</style>
 
   <details class="box" id="imp">
     <summary style="cursor:pointer;font-weight:700">Impostazioni · modulo per gli studenti</summary>
-    <p id="stModulo" class="piccolo" style="margin-top:12px">Caricamento…</p>
+    <p id="stAccesso" class="piccolo" style="margin-top:12px"></p>
+    <p id="stModulo" class="piccolo">Caricamento…</p>
     <p class="piccolo">Indirizzo della pagina del modulo (la cartella dove hai caricato index.html). Se usi il pannello ospitato fuori,
       si compila da solo. Lascialo vuoto per usare il modulo servito da Apps Script.</p>
     <div class="form">
@@ -116,8 +138,8 @@ body{background:#f1f5f9}</style>
       <input type="text" id="clientId" placeholder="ID client Google (…apps.googleusercontent.com)" autocomplete="off">
       <button id="salvaGoogle">Salva</button>
     </div>
-    <p class="piccolo">Con l'ID client impostato, per amministrare serve accedere con l'account proprietario di Google.
-      Lascia vuoto e salva per disattivare.</p>
+    <p class="piccolo">Controllo doppio facoltativo: con l'ID client impostato, oltre a email e password bisogna scegliere
+      l'account Google con la stessa email. Lascia vuoto e salva per disattivare.</p>
   </details>
 </div>
 
@@ -125,11 +147,13 @@ body{background:#f1f5f9}</style>
 <script>
 
 function leggiCfg() { try { var s = localStorage.getItem("asmed_cfg") || sessionStorage.getItem("asmed_cfg"); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
-function salvaCfg(c) { try { var t = JSON.stringify(c); if (c.ricorda) { localStorage.setItem("asmed_cfg", t); sessionStorage.removeItem("asmed_cfg"); } else { sessionStorage.setItem("asmed_cfg", t); localStorage.removeItem("asmed_cfg"); } } catch (e) {} }
+function salvaCfg(c) { try { var t = JSON.stringify(c); if (c.ricorda !== false) { localStorage.setItem("asmed_cfg", t); sessionStorage.removeItem("asmed_cfg"); } else { sessionStorage.setItem("asmed_cfg", t); localStorage.removeItem("asmed_cfg"); } } catch (e) {} }
 function dimentica() { try { localStorage.removeItem("asmed_cfg"); sessionStorage.removeItem("asmed_cfg"); } catch (e) {} }
-function apiValido(u) { return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,200}\/exec$/.test(u); }
-function chiaveValida(k) { return /^[A-Za-z0-9]{16,64}$/.test(k); }
-function credenziale(c) { return c.key + (c.sessione ? "|" + c.sessione : ""); }
+function apiValido(u) { return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,200}\/exec$/.test(u || ""); }
+function chiaveValida(k) { return /^[A-Za-z0-9]{16,64}$/.test(k || ""); }
+function apiFissa() { return (typeof ASMED_API === "string" && apiValido(ASMED_API)) ? ASMED_API : ""; }
+function apiCorrente(c) { return apiFissa() || ((c && apiValido(c.api)) ? c.api : ""); }
+function credenziale(c) { return (c && (c.sessione || c.key)) || ""; }
 function idDistribuzione(api) { var m = /\/macros\/s\/([^\/]+)\/exec$/.exec(api || ""); return m ? m[1] : ""; }
 function cartellaCorrente() { return location.href.split("?")[0].split("#")[0].replace(/[^\/]*$/, ""); }
 
@@ -148,10 +172,13 @@ var ASMED_RUN = {
   withSuccessHandler: function (ok) {
     return { withFailureHandler: function (ko) {
       return new Proxy({}, { get: function (_, fn) { return function () {
-        var args = Array.prototype.slice.call(arguments), c = leggiCfg();
-        if (!c || !apiValido(c.api)) { ko({ message: "Non autorizzato: apri il pannello e accedi." }); return; }
-        chiediAdm(c.api, fn, args).then(function (x) { ok(x); }, function (e) {
-          if (/^Non autorizzato/.test(e.message)) { c.sessione = ""; c.scade = 0; salvaCfg(c); }
+        var args = Array.prototype.slice.call(arguments), c = leggiCfg() || {}, api = apiCorrente(c);
+        if (!apiValido(api)) { ko({ message: "Non autorizzato: apri il pannello e accedi." }); return; }
+        chiediAdm(api, fn, args).then(function (x) { ok(x); }, function (e) {
+          if (/^Non autorizzato/.test(e.message)) {
+            c.sessione = ""; c.scade = 0; if (c.api || c.key) salvaCfg(c);
+            if (window.SESSIONE_SCADUTA) { window.SESSIONE_SCADUTA(); return; }
+          }
           ko({ message: e.message });
         });
       }; } });
@@ -181,7 +208,7 @@ function dataIt(d) { return d.split("-").reverse().join("/"); }
 function bottone(testo, cls, fn) { var b = el("button", cls, testo); b.onclick = fn; return b; }
 function link(testo, cls, href) { var a = el("a", "btn " + cls, testo); a.href = href; a.target = "_blank"; return a; }
 function linkSchermo(r) { return BASE + "?sessione=" + encodeURIComponent(r.id); }
-function testoInfo(r) { return dataIt(r.data) + " · " + (r.n || 0) + " presenti" + (r.chiusa ? " · chiusa il " + r.chiusa : ""); }
+function testoInfo(r) { return dataIt(r.data) + " · " + (r.n || 0) + " presenti" + (r.chiusa ? " · chiusa il " + r.chiusa : " · QR ogni " + r.qrSec + " s · " + r.tempo + " s per compilare"); }
 
 function vai(n) {
   for (var i = 1; i <= 3; i++) {
@@ -227,6 +254,29 @@ function formManuale(r, info) {
   return f;
 }
 
+function formImpostazioni(r, info) {
+  var f = el("div", "manuale"); f.style.display = "none";
+  var riga = el("div", "form"); riga.style.alignItems = "flex-end";
+  function num(testo, val, min, max) {
+    var w = el("label", "piccolo", testo); w.style.flex = "1 1 190px"; w.appendChild(el("br"));
+    var i = el("input"); i.type = "number"; i.min = min; i.max = max; i.value = val; i.style.width = "100%";
+    w.appendChild(i); riga.appendChild(w); return i;
+  }
+  var q = num("Il QR cambia ogni (secondi)", r.qrSec, 5, 120);
+  var t = num("Tempo per compilare dopo la scansione (secondi)", r.tempo, 15, 600);
+  var msg = el("p", "piccolo");
+  riga.appendChild(bottone("Salva", "verde", function () {
+    chiama("adm_impostaRiunione", [ADMIN, r.id, Number(q.value), Number(t.value)], function (x) {
+      riunioni = x.lista;
+      var u = x.lista.filter(function (z) { return z.id === r.id; })[0];
+      if (u) { r.qrSec = u.qrSec; r.tempo = u.tempo; info.textContent = testoInfo(u); }
+      msg.className = "ok"; msg.textContent = "Salvato. Vale da subito: lo schermo si aggiorna entro pochi secondi.";
+    });
+  }));
+  f.appendChild(riga); f.appendChild(msg);
+  return f;
+}
+
 function disegna() {
   var box = document.getElementById("lista"); box.innerHTML = "";
   var mostra = document.getElementById("chiuse").checked;
@@ -250,9 +300,12 @@ function disegna() {
       if (confirm("Chiudere definitivamente le presenze di " + r.nome + "?" + NL + "Gli studenti non potranno più registrarsi e la riunione NON si può riaprire da qui. Potrai comunque aggiungere presenti a mano.")) cambia(r, "Chiusa");
     }));
     var form = formManuale(r, info);
+    var impF = r.stato !== "Chiusa" ? formImpostazioni(r, info) : null;
+    if (impF) az.appendChild(bottone("Durata QR e tempo", "sec", function () { impF.style.display = impF.style.display === "none" ? "block" : "none"; }));
     az.appendChild(bottone("Aggiungi presente a mano", "sec", function () { form.style.display = form.style.display === "none" ? "block" : "none"; }));
     az.appendChild(bottone("Elenco ed esportazione", "sec", function () { vai(3); document.getElementById("scelta").value = r.id; apriElenco(r.id); }));
     riga.appendChild(az);
+    if (impF) riga.appendChild(impF);
     riga.appendChild(form);
     box.appendChild(riga);
   });
@@ -339,7 +392,7 @@ document.getElementById("crea").onclick = function () {
   if (!n) { alert("Scrivi il nome della riunione."); return; }
   if (!d) { alert("Scegli la data."); return; }
   document.getElementById("msgCrea").textContent = "Creo il file della riunione, un attimo…";
-  chiama("adm_nuova", [ADMIN, n, d], function (r) {
+  chiama("adm_nuova", [ADMIN, n, d, Number(document.getElementById("nQr").value), Number(document.getElementById("nTempo").value)], function (r) {
     riunioni = r.lista; document.getElementById("nome").value = ""; disegna();
     document.getElementById("msgCrea").textContent = "";
     vai(2);
@@ -358,9 +411,13 @@ function caricaImp() {
       return;
     }
     document.getElementById("clientId").value = x.clientId || "";
+    document.getElementById("stAccesso").textContent = x.modo === "password"
+      ? "Accesso al pannello: email + password. Possono entrare: " + (x.ammessi || []).join(", ") + ". La password si cambia nel codice (PASSWORD_ADMIN)."
+      : "Accesso al pannello: solo chiave admin. Per usare email e password scrivi PASSWORD_ADMIN nel codice e ridistribuisci.";
     document.getElementById("stGoogle").textContent = x.google
-      ? "Accesso con Google: ATTIVO. Possono amministrare: " + (x.ammessi || []).join(", ")
-      : "Accesso con Google: non attivo (basta la chiave admin).";
+      ? "Controllo con Google: ATTIVO."
+      : (x.modo === "password" ? "Controllo con Google: non attivo (facoltativo)." : "Il controllo con Google si può attivare solo con email e password attivi.");
+    if (!window.__predef) { window.__predef = true; document.getElementById("nQr").value = x.predefQr; document.getElementById("nTempo").value = x.predefTempo; }
     document.getElementById("urlModulo").value = x.urlModulo || "";
     document.getElementById("apiUrl").textContent = x.urlApi || "";
     document.getElementById("stModulo").textContent = x.urlModulo
@@ -371,7 +428,7 @@ function caricaImp() {
 }
 document.getElementById("salvaGoogle").onclick = function () {
   var nuovo = document.getElementById("clientId").value;
-  if (nuovo.trim() && !confirm("Attivando l'accesso con Google dovrai accedere con l'account proprietario. Procedere?")) return;
+  if (nuovo.trim() && !confirm("Dopo l'attivazione, per entrare servirà anche scegliere l'account Google con la stessa email. Procedere?")) return;
   chiama("adm_impostaGoogle", [ADMIN, nuovo], function (x) {
     alert(x.msg);
     if (x.ok && window.RICARICA) window.RICARICA(); else caricaImp();
@@ -390,47 +447,68 @@ carica();
 
 (function () {
   function $(id) { return document.getElementById(id); }
+  var gcred = "";
   function mostra(cosa) {
     $("gate").style.display = cosa ? "block" : "none";
     $("gateApp").style.display = cosa === "app" ? "block" : "none";
-    $("gateGoogle").style.display = cosa === "google" ? "block" : "none";
+    $("gateLogin").style.display = cosa === "login" ? "block" : "none";
+    $("gateChiave").style.display = cosa === "chiave" ? "block" : "none";
+    $("cambiaBox").style.display = apiFissa() ? "none" : "block";
   }
   function entra() {
     mostra(null); $("app").style.display = "block";
     window.MODULO_AUTO = cartellaCorrente();
     window.RICARICA = function () { location.reload(); };
+    window.SESSIONE_SCADUTA = function () { alert("Sessione scaduta: accedi di nuovo."); location.reload(); };
     avvia();
   }
   function parti() {
-    var cfg = leggiCfg();
-    if (!cfg || !apiValido(cfg.api) || !chiaveValida(cfg.key)) { mostra("app"); return; }
-    fetch(cfg.api + "?api=config", { credentials: "omit" }).then(function (r) { return r.json(); }).then(function (c) {
-      if (!c.google) { cfg.sessione = ""; salvaCfg(cfg); entra(); return; }
-      if (cfg.sessione && cfg.scade > Date.now() + 60000) { entra(); return; }
-      mostra("google"); preparaGoogle(c.clientId, cfg);
+    var cfg = leggiCfg() || {}, api = apiCorrente(cfg);
+    if (!apiValido(api)) { mostra("app"); return; }
+    fetch(api + "?api=config", { credentials: "omit" }).then(function (r) { return r.json(); }).then(function (c) {
+      if (c.modo === "password") {
+        if (cfg.sessione && cfg.scade > Date.now() + 60000) { entra(); return; }
+        mostra("login"); preparaLogin(api, c); return;
+      }
+      if (chiaveValida(cfg.key)) { cfg.sessione = ""; salvaCfg(cfg); entra(); return; }
+      mostra("chiave");
     }).catch(function () { mostra("app"); $("msgApp").textContent = "Connessione non riuscita: controlla l'indirizzo e la rete."; });
   }
-  function preparaGoogle(clientId, cfg) {
-    var tentativi = 0;
-    (function attendi() {
-      if (window.google && google.accounts && google.accounts.id) {
-        google.accounts.id.initialize({ client_id: clientId, ux_mode: "popup", auto_select: false, callback: function (r) {
-          $("msgGoogle").className = "p"; $("msgGoogle").textContent = "Verifica in corso…";
-          chiediAdm(cfg.api, "adm_accedi", [cfg.key, r.credential]).then(function (x) {
-            cfg.sessione = x.sessione; cfg.scade = x.scade; cfg.email = x.email; salvaCfg(cfg); entra();
-          }).catch(function (e) { $("msgGoogle").className = "e"; $("msgGoogle").textContent = e.message; });
-        } });
-        google.accounts.id.renderButton($("gsi"), { theme: "filled_blue", size: "large", text: "signin_with", locale: "it" });
-      } else if (++tentativi < 60) { setTimeout(attendi, 250); }
-      else { $("msgGoogle").textContent = "Impossibile caricare l'accesso Google (rete o blocco dei contenuti)."; }
-    })();
+  function preparaLogin(api, c) {
+    gcred = ""; $("googleBox").style.display = c.google ? "block" : "none";
+    if (c.google) {
+      var tentativi = 0;
+      (function attendi() {
+        if (window.google && google.accounts && google.accounts.id) {
+          google.accounts.id.initialize({ client_id: c.clientId, ux_mode: "popup", auto_select: false, callback: function (r) {
+            gcred = r.credential; $("gOk").textContent = "Account Google scelto ✓";
+          } });
+          google.accounts.id.renderButton($("gsi"), { theme: "filled_blue", size: "large", text: "signin_with", locale: "it" });
+        } else if (++tentativi < 60) { setTimeout(attendi, 250); }
+        else { $("msgLogin").textContent = "Impossibile caricare l'accesso Google (rete o blocco dei contenuti)."; }
+      })();
+    }
+    $("gateLogin").onsubmit = function (e) {
+      e.preventDefault();
+      var email = $("inEmail").value.trim(), pw = $("inPw").value, m = $("msgLogin");
+      if (!email || !pw) { m.className = "e"; m.textContent = "Scrivi email e password."; return; }
+      if (c.google && !gcred) { m.className = "e"; m.textContent = "Scegli prima l'account Google."; return; }
+      m.className = "p"; m.textContent = "Verifica in corso…";
+      chiediAdm(api, "adm_accedi", [email, pw, gcred]).then(function (x) {
+        salvaCfg({ api: api, sessione: x.sessione, scade: x.scade, email: x.email, ricorda: $("inRicorda").checked });
+        $("inPw").value = ""; entra();
+      }).catch(function (er) { m.className = "e"; m.textContent = er.message; $("inPw").value = ""; });
+    };
   }
   $("vai").onclick = function () {
-    var api = $("inApi").value.trim(), key = $("inKey").value.trim();
+    var api = $("inApi").value.trim();
     if (!apiValido(api)) { $("msgApp").textContent = "L'indirizzo deve essere quello dell'app e finire con /exec."; return; }
-    if (!chiaveValida(key)) { $("msgApp").textContent = "La chiave sembra non valida (solo lettere e numeri)."; return; }
-    salvaCfg({ api: api, key: key, sessione: "", scade: 0, ricorda: $("inRicorda").checked });
-    $("msgApp").textContent = ""; parti();
+    var c = leggiCfg() || {}; c.api = api; salvaCfg(c); $("msgApp").textContent = ""; parti();
+  };
+  $("vaiK").onclick = function () {
+    var key = $("inKey").value.trim();
+    if (!chiaveValida(key)) { $("msgKey").textContent = "La chiave sembra non valida (solo lettere e numeri)."; return; }
+    var c = leggiCfg() || {}; c.api = apiCorrente(c); c.key = key; c.ricorda = $("inRicordaK").checked; salvaCfg(c); parti();
   };
   $("cambiaApp").onclick = function (e) { e.preventDefault(); dimentica(); mostra("app"); };
   $("esci").onclick = function () { dimentica(); location.reload(); };
